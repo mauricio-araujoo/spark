@@ -1,9 +1,8 @@
 #include "spark/interpolate/weight.h"
+
 #include "spark/particle/species.h"
 #include "spark/spatial/grid.h"
-#include <thread>
-#include <atomic>
-#include <mutex>
+
 namespace {
 template <unsigned NV>
 void weight_to_grid(const spark::particle::ChargedSpecies<1, NV>& species,
@@ -16,39 +15,18 @@ void weight_to_grid(const spark::particle::ChargedSpecies<1, NV>& species,
     const double dx = out.dx().x;
     auto& g = out.data().data();
     const double mdx = 1.0 / dx;
-    
-    std::atomic<int> fila(0);
-    std::mutex mtx;
-    size_t n_th = 10;
-    size_t block_Dim = n / n_th;
-    std::thread threads[n_th]; 
+   
+    #pragma omp parallel for simd 
+    for (size_t i = 0; i < n; i++) {
+        const double xp_dx = x[i].x * mdx;
+        const double il = floor(xp_dx);
+        const size_t ils = static_cast<size_t>(il);
 
-    auto th_fn = [&](size_t l, size_t r, int id){
-	while(fila.load() != id)
-		std::this_thread::yield();
-        mtx.lock();
-	for (size_t i = l; i < r; i++) {
-            const double xp_dx = x[i].x * mdx;
-            const double il = floor(xp_dx);
-	    const size_t ils = static_cast<size_t>(il);
-
-            g[ils] += il + 1.0 - xp_dx;
-            g[ils + 1] += xp_dx - il;
-        }
-	fila.fetch_add(1);
-	mtx.unlock();
-    };
-    
-    for (int i = 0; i < n_th; i++) {
-        threads[i] = std::thread(th_fn, block_Dim * i, (block_Dim * i) + block_Dim,i);
-    }
-
-    for (int i = 0; i < n_th; i++) {
-        threads[i].join();
-    }
-    if(n%n_th != 0){
-        std::thread fnl(th_fn,(block_Dim*(n_th-1)+block_Dim),(block_Dim*(n_th-1)+block_Dim)+n%n_th,n_th);
-    	fnl.join();
+	#pragma omp critical
+        g[ils] += il + 1.0 - xp_dx;
+	
+	#pragma omp critical
+        g[ils + 1] += xp_dx - il;
     }
 
     g.front() *= 2.0;
