@@ -3,11 +3,13 @@
 #include "spark/core/matrix.h"
 #include "spark/core/vec.h"
 #include "spark/particle/species.h"
-
+#include "spark/threads/pool.h"
+#include <thread>
 namespace spark::particle {
 
 template <unsigned NX, unsigned NV>
 void move_particles(ChargedSpecies<NX, NV>& species,
                     const core::TMatrix<core::Vec<NX>, 1>& force,
-                    double dt);
+                    double dt,
+		    spark::threads::ThPool& pool);
 }

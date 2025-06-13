@@ -1,12 +1,18 @@
 #include "spark/interpolate/weight.h"
-
+#include <thread>
 #include "spark/particle/species.h"
 #include "spark/spatial/grid.h"
+#include "spark/threads/pool.h"
+#include "spark/core/matrix.h"
+#include "spark/core/vec.h"
+#include <vector>
+#include <future>
 
 namespace {
 template <unsigned NV>
 void weight_to_grid(const spark::particle::ChargedSpecies<1, NV>& species,
-                    spark::spatial::UniformGrid<1>& out) {
+                    spark::spatial::UniformGrid<1>& out,
+                    spark::threads::ThPool& pool) {
     const size_t n = species.n();
     auto* x = species.x();
 
@@ -25,6 +31,38 @@ void weight_to_grid(const spark::particle::ChargedSpecies<1, NV>& species,
         g[ils + 1] += xp_dx - il;
     }
 
+/*
+    size_t n_threads = pool.get_num_th();
+    int block_id = n/n_threads;
+    //std::vector<std::future<spark::core::TMatrix<double, 1>>> retorno;
+    //std::vector<spark::threads::ThPool> filaRet; 
+    //std::vector<std::future<std::vector<double>>> filaRet;
+    for(size_t i = 0; i < n_threads; i++){
+        filaRet.push_back(pool.enfileira([=](size_t inicio, size_t fim){
+            auto aux = g;
+            for(int j = inicio; j < fim; j++){
+                const double xp_dx = x[j].x * mdx;
+                const double il = floor(xp_dx);
+                const size_t ils = static_cast<size_t>(il);
+
+                aux[ils] += il + 1.0 - xp_dx;
+                aux[ils + 1] += xp_dx - il;
+            }
+            return aux;
+        },i*block_id, ((i*block_id)+block_id)-1));
+    }
+
+    g = filaRet.front().get();
+    filaRet.erase(filaRet.begin());
+    for(auto& vet: filaRet){
+        for(size_t i = 0; i < g.size();i++ ){
+            if(vet.valid()){
+                auto&& aux = vet.get();   
+                g[i] += aux[i];
+            }
+        }
+    }
+*/
     g.front() *= 2.0;
     g.back() *= 2.0;
 }
@@ -32,7 +70,8 @@ void weight_to_grid(const spark::particle::ChargedSpecies<1, NV>& species,
 // Template specialization for 2D - Based on Birdsall and Langdon (1991), Chapter 14 Section 14.2
 template <unsigned NV>
 void weight_to_grid(const spark::particle::ChargedSpecies<2, NV>& species,
-                    spark::spatial::UniformGrid<2>& out) {
+                    spark::spatial::UniformGrid<2>& out,
+                    spark::threads::ThPool& pool) {
     const size_t n = species.n();
     auto* x = species.x();
 
@@ -83,19 +122,24 @@ void weight_to_grid(const spark::particle::ChargedSpecies<2, NV>& species,
 
 template <class GridType, unsigned NX, unsigned NV>
 void spark::interpolate::weight_to_grid(const spark::particle::ChargedSpecies<NX, NV>& species,
-                                        GridType& out) {
-    ::weight_to_grid(species, out);
+                                        GridType& out,
+                                        spark::threads::ThPool& pool) {
+    ::weight_to_grid(species, out, pool);
 }
 
 template void spark::interpolate::weight_to_grid(
     const spark::particle::ChargedSpecies<1, 1>& species,
-    spark::spatial::UniformGrid<1>& out);
+    spark::spatial::UniformGrid<1>& out,
+    spark::threads::ThPool& pool);
 template void spark::interpolate::weight_to_grid(
     const spark::particle::ChargedSpecies<1, 3>& species,
-    spark::spatial::UniformGrid<1>& out);
+    spark::spatial::UniformGrid<1>& out,
+    spark::threads::ThPool& pool);
 template void spark::interpolate::weight_to_grid(
     const spark::particle::ChargedSpecies<2, 1>& species,
-    spark::spatial::UniformGrid<2>& out);
+    spark::spatial::UniformGrid<2>& out,
+    spark::threads::ThPool& pool);
 template void spark::interpolate::weight_to_grid(
     const spark::particle::ChargedSpecies<2, 3>& species,
-    spark::spatial::UniformGrid<2>& out);
+    spark::spatial::UniformGrid<2>& out,
+    spark::threads::ThPool& pool);

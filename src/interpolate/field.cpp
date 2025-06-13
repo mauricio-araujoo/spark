@@ -1,7 +1,7 @@
 #include "spark/interpolate/field.h"
-
+#include "spark/threads/pool.h"
 #include <spark/spatial/grid.h>
-
+#include <vector>
 #include "spark/particle/species.h"
 
 using namespace spark;
@@ -12,7 +12,8 @@ namespace {
 template <typename T, unsigned NV>
 void field_at_particles(const spatial::TUniformGrid<T, 1>& field,
                         const particle::ChargedSpecies<1, NV>& species,
-                        TMatrix<T, 1>& out) {
+                        TMatrix<T, 1>& out,
+                        spark::threads::ThPool& pool) {
     const size_t n = species.n();
     out.resize({n});
 
@@ -22,6 +23,7 @@ void field_at_particles(const spatial::TUniformGrid<T, 1>& field,
     const auto& f = field.data();
     const double mdx = 1.0 / dx;
 
+    /*
     for (size_t i = 0; i < n; i++) {
         const double xp_dx = x[i].x * mdx;
         const double il = floor(xp_dx);
@@ -29,12 +31,42 @@ void field_at_particles(const spatial::TUniformGrid<T, 1>& field,
 
         out[i] = f[ils] * (il + 1.0 - xp_dx) + f[ils + 1] * (xp_dx - il);
     }
+
+    
+    size_t n_threads = pool.get_num_th();
+    int block_id = n/n_threads;
+    for(size_t i = 0; i < n_threads; i++){
+        pool.enfileira([=](size_t inicio, size_t fim){
+	        for(int i = inicio; i < fim ; i++){
+	 	        v[i].x += f[i].x * k;
+	            x[i].x += v[i].x * dt;   
+	        }
+        }, i*block_id, ((i*block_id)+block_id)-1);
+
+    }
+*/    
+
+    size_t n_threads = pool.get_num_th();
+    int block_id = n/n_threads;
+    for(size_t i = 0; i < n_threads; i++){
+        pool.enfileira([=,&out](size_t inicio, size_t fim){
+            for(int j = inicio; j < fim ; j++){
+                const double xp_dx = x[j].x * mdx;
+                const double il = floor(xp_dx);
+                const auto ils = static_cast<size_t>(il);
+
+                out[j] = f[ils] * (il + 1.0 - xp_dx) + f[ils + 1] * (xp_dx - il);
+            }
+        }, i*block_id, ((i*block_id)+block_id)-1);
+    }
+
 }
 
 template <typename T, unsigned NV>
 void field_at_particles(const spatial::TUniformGrid<T, 2>& field,
                         const particle::ChargedSpecies<2, NV>& species,
-                        TMatrix<T, 1>& out) {
+                        TMatrix<T, 1>& out,
+                        spark::threads::ThPool& pool) {
     const size_t n = species.n();
     out.resize({n});
 
@@ -65,22 +97,28 @@ void field_at_particles(const spatial::TUniformGrid<T, 2>& field,
 template <typename T, unsigned NX, unsigned NV>
 void spark::interpolate::field_at_particles(const spark::spatial::TUniformGrid<T, NX>& field,
                                             const spark::particle::ChargedSpecies<NX, NV>& species,
-                                            core::TMatrix<T, 1>& out) {
-    ::field_at_particles(field, species, out);
+                                            core::TMatrix<T, 1>& out,
+                                            spark::threads::ThPool& pool) {
+    ::field_at_particles(field, species, out,pool);
 }
 
 template void interpolate::field_at_particles(const spatial::UniformGrid<1>& field,
                                               const particle::ChargedSpecies<1, 1>& species,
-                                              Matrix<1>& out);
+                                              Matrix<1>& out,
+                                              spark::threads::ThPool& pool);
 template void interpolate::field_at_particles(const spatial::UniformGrid<1>& field,
                                               const particle::ChargedSpecies<1, 3>& species,
-                                              Matrix<1>& out);
+                                              Matrix<1>& out,
+                                              spark::threads::ThPool& pool);
 template void interpolate::field_at_particles(const spatial::UniformGrid<2>& field,
                                               const particle::ChargedSpecies<2, 3>& species,
-                                              Matrix<1>& out);
+                                              Matrix<1>& out,
+                                              spark::threads::ThPool& pool);
 template void interpolate::field_at_particles(const spatial::TUniformGrid<Vec<1>, 1>& field,
                                               const particle::ChargedSpecies<1, 3>& species,
-                                              TMatrix<Vec<1>, 1>& out);
+                                              TMatrix<Vec<1>, 1>& out,
+                                              spark::threads::ThPool& pool);
 template void interpolate::field_at_particles(const spatial::TUniformGrid<Vec<2>, 2>& field,
                                               const particle::ChargedSpecies<2, 3>& species,
-                                              TMatrix<Vec<2>, 1>& out);
+                                              TMatrix<Vec<2>, 1>& out,
+                                              spark::threads::ThPool& pool);
