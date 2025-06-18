@@ -16,7 +16,8 @@ public:
         : stop(false) {
 		this->num_threads = num_threads;
         for(size_t i = 0; i < num_threads; ++i) {
-            workers.emplace_back([this] {
+            workers.emplace_back([this] (int tid){
+                //set_affinity(tid);
                 while(true) {
                     std::function<void()> task;
                     {
@@ -34,34 +35,32 @@ public:
                     }
                     task();
                 }
-            });
+            },i);
         }
     }
+
+    int set_affinity(int tid){
+	    cpu_set_t mask;
+	    CPU_ZERO(&mask);
+	    CPU_SET(tid, &mask);
+	    return sched_setaffinity(0, sizeof(mask), &mask);
+    }
+
 	size_t get_num_th() const{
 			return this->num_threads;
 	}
 
     template<class F, class... Args>
-    auto enfileira(F&& f, Args&&... args) 
-        -> std::future<typename std::result_of<F(Args...)>::type> {
-        using return_type = typename std::result_of<F(Args...)>::type;
-        
-        auto task_ptr = std::make_shared<std::packaged_task<return_type()>>(
-            std::bind(std::forward<F>(f), std::forward<Args>(args)...)
-        );
-            
-        std::future<return_type> res = task_ptr->get_future();
+    void enfileira(F&& f, Args&&... args) {
+       	auto task = std::make_shared<std::function<void()>>(std::bind(std::forward<F>(f), 
+							    std::forward<Args>(args)...));
         {
-            std::unique_lock<std::mutex> lock(queue_mutex);
-            
-            if(stop)
-                throw std::runtime_error("enfileira em ThreadPool parada");
-                
-            tasks.emplace([task_ptr](){ (*task_ptr)(); });
-        }
-        condition.notify_one();
-        return res;
+		std::unique_lock<std::mutex> lock(queue_mutex);
+		tasks.emplace([task](){ (*task)(); });
+	}
+       		condition.notify_one();
     }
+
 
     ~ThPool() {
         {
